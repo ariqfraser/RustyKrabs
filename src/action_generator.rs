@@ -40,11 +40,64 @@ impl ActionGenerator {
         actions
     }
 
-    fn in_check(&self, board: &Board, check_for_white: bool) -> bool {
-        match check_for_white {
-            true => board.white_in_check,
-            false => board.black_in_check,
+    fn king_in_check(&self, board: &Board, check_for_white: bool) -> bool {
+        let king_index = board
+            .array
+            .iter()
+            .position(|&p| p.piece_type.eq(&PieceType::King) && p.is_white == check_for_white)
+            .unwrap() as i32;
+
+        // Opposition bishop checking
+        for direction in allowed_directions(PieceType::Bishop, true) {
+            let limit = self
+                .precomputed
+                .get_edge_distance(king_index, direction.name);
+
+            for moves in 1..=limit {
+                let target = king_index + direction.offset * moves;
+                let target_piece = board.array[target as usize];
+                let is_opposition = target_piece.is_white != check_for_white;
+                let is_queen_or_king = target_piece.piece_type.eq(&PieceType::Bishop)
+                    || target_piece.piece_type.eq(&PieceType::King);
+
+                if !is_opposition {
+                    break;
+                }
+
+                if (target_piece.piece_type.eq(&PieceType::Bishop) || is_queen_or_king)
+                    && is_opposition
+                {
+                    return true;
+                }
+            }
         }
+
+        // Opposition rook checking
+        for direction in allowed_directions(PieceType::Rook, true) {
+            let limit = self
+                .precomputed
+                .get_edge_distance(king_index, direction.name);
+
+            for moves in 1..=limit {
+                let target = king_index + direction.offset * moves;
+                let target_piece = board.array[target as usize];
+                let is_opposition = target_piece.is_white != check_for_white;
+                let is_queen_or_king = target_piece.piece_type.eq(&PieceType::Bishop)
+                    || target_piece.piece_type.eq(&PieceType::King);
+
+                if !is_opposition {
+                    return false;
+                }
+
+                if (target_piece.piece_type.eq(&PieceType::Rook) || is_queen_or_king)
+                    && is_opposition
+                {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     fn generate_pawn_moves(&self, pos: i32, is_white: bool, has_moved: bool) -> Vec<Action> {
@@ -158,7 +211,7 @@ impl ActionGenerator {
 #[cfg(test)]
 mod tests {
     use super::ActionGenerator;
-    use crate::precomputed_data::PrecomputedData;
+    use crate::{board::Board, precomputed_data::PrecomputedData};
 
     // KNIGHT MOVES
 
@@ -308,5 +361,65 @@ mod tests {
         let moves = gen.generate_pawn_moves(17, false, false);
 
         assert_eq!(moves.len(), 2);
+    }
+
+    #[test]
+    fn king_in_check_white_complex_no_check() {
+        let gen = ActionGenerator {
+            opposition_indicies: vec![10, 8],
+            current_indices: vec![9],
+            precomputed: PrecomputedData::default(),
+        };
+        let board = Board::new("b2r2b1/1B3B2/3R4/2RK2Rr/r3B3/1B1R1b2/8/3r4 w - - 0 1");
+        let actual = gen.king_in_check(&board, true);
+        assert!(!actual);
+    }
+
+    #[test]
+    fn king_in_check_white_rook_s() {
+        let gen = ActionGenerator {
+            opposition_indicies: vec![10, 8],
+            current_indices: vec![9],
+            precomputed: PrecomputedData::default(),
+        };
+        let board = Board::new("8/8/8/8/8/8/1r2K3/8 w - - 0 1");
+        let actual = gen.king_in_check(&board, true);
+        assert!(actual);
+    }
+
+    #[test]
+    fn king_in_check_white_rook_w() {
+        let gen = ActionGenerator {
+            opposition_indicies: vec![10, 8],
+            current_indices: vec![9],
+            precomputed: PrecomputedData::default(),
+        };
+        let board = Board::new("8/8/8/8/8/8/1r2K3/8 w - - 0 1");
+        let actual = gen.king_in_check(&board, true);
+        assert!(actual);
+    }
+
+    #[test]
+    fn king_in_check_white_bishop_nw() {
+        let gen = ActionGenerator {
+            opposition_indicies: vec![10, 8],
+            current_indices: vec![9],
+            precomputed: PrecomputedData::default(),
+        };
+        let board = Board::new("8/8/8/8/b7/8/2K5/8 w - - 0 1");
+        let actual = gen.king_in_check(&board, true);
+        assert!(actual);
+    }
+
+    #[test]
+    fn king_in_check_white_bishop_ne() {
+        let gen = ActionGenerator {
+            opposition_indicies: vec![10, 8],
+            current_indices: vec![9],
+            precomputed: PrecomputedData::default(),
+        };
+        let board = Board::new("8/8/8/5b2/8/8/2K5/8 w - - 0 1");
+        let actual = gen.king_in_check(&board, true);
+        assert!(actual);
     }
 }
